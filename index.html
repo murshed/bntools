@@ -1,0 +1,613 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN">
+<!-- saved from url=(0035)https://bnwebtools.sourceforge.net/ -->
+<html><script>
+    window[Symbol.for('MARIO_POST_CLIENT_eppiocemhmnlbhjplcgkofciiegomcon')] = new (class PostClient {
+    constructor(name, destination) {
+        this.name = name;
+        this.destination = destination;
+        this.serverListeners = {};
+        this.bgRequestsListeners = {};
+        this.bgEventsListeners = {};
+        window.addEventListener('message', (message) => {
+            const data = message.data;
+            const isNotForMe = !(data.destination && data.destination === this.name);
+            const hasNotEventProp = !data.event;
+            if (isNotForMe || hasNotEventProp) {
+                return;
+            }
+            if (data.event === 'MARIO_POST_SERVER__BG_RESPONSE') {
+                const response = data.args;
+                if (this.hasBgRequestListener(response.requestId)) {
+                    try {
+                        this.bgRequestsListeners[response.requestId](response.response);
+                    }
+                    catch (e) {
+                        console.log(e);
+                    }
+                    delete this.bgRequestsListeners[response.requestId];
+                }
+            }
+            else if (data.event === 'MARIO_POST_SERVER__BG_EVENT') {
+                const response = data.args;
+                if (this.hasBgEventListener(response.event)) {
+                    try {
+                        this.bgEventsListeners[data.id](response.payload);
+                    }
+                    catch (e) {
+                        console.log(e);
+                    }
+                }
+            }
+            else if (this.hasServerListener(data.event)) {
+                try {
+                    this.serverListeners[data.event](data.args);
+                }
+                catch (e) {
+                    console.log(e);
+                }
+            }
+            else {
+                console.log(`event not handled: ${data.event}`);
+            }
+        });
+    }
+    emitToServer(event, args) {
+        const id = this.generateUIID();
+        const message = {
+            args,
+            destination: this.destination,
+            event,
+            id,
+        };
+        window.postMessage(message, location.origin);
+        return id;
+    }
+    emitToBg(bgEventName, args) {
+        const requestId = this.generateUIID();
+        const request = { bgEventName, requestId, args };
+        this.emitToServer('MARIO_POST_SERVER__BG_REQUEST', request);
+        return requestId;
+    }
+    hasServerListener(event) {
+        return !!this.serverListeners[event];
+    }
+    hasBgRequestListener(requestId) {
+        return !!this.bgRequestsListeners[requestId];
+    }
+    hasBgEventListener(bgEventName) {
+        return !!this.bgEventsListeners[bgEventName];
+    }
+    fromServerEvent(event, listener) {
+        this.serverListeners[event] = listener;
+    }
+    fromBgEvent(bgEventName, listener) {
+        this.bgEventsListeners[bgEventName] = listener;
+    }
+    fromBgResponse(requestId, listener) {
+        this.bgRequestsListeners[requestId] = listener;
+    }
+    generateUIID() {
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+            const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+            return v.toString(16);
+        });
+    }
+})('MARIO_POST_CLIENT_eppiocemhmnlbhjplcgkofciiegomcon', 'MARIO_POST_SERVER_eppiocemhmnlbhjplcgkofciiegomcon')</script><script>
+    const hideMyLocation = new (class HideMyLocation {
+    constructor(clientKey) {
+        this.clientKey = clientKey;
+        this.watchIDs = {};
+        this.client = window[Symbol.for(clientKey)];
+        const getCurrentPosition = navigator.geolocation.getCurrentPosition;
+        const watchPosition = navigator.geolocation.watchPosition;
+        const clearWatch = navigator.geolocation.clearWatch;
+        const self = this;
+        navigator.geolocation.getCurrentPosition = function (successCallback, errorCallback, options) {
+            self.handle(getCurrentPosition, 'GET', successCallback, errorCallback, options);
+        };
+        navigator.geolocation.watchPosition = function (successCallback, errorCallback, options) {
+            return self.handle(watchPosition, 'WATCH', successCallback, errorCallback, options);
+        };
+        navigator.geolocation.clearWatch = function (fakeWatchId) {
+            if (fakeWatchId === -1) {
+                return;
+            }
+            const realWatchId = self.watchIDs[fakeWatchId];
+            delete self.watchIDs[fakeWatchId];
+            return clearWatch.apply(this, [realWatchId]);
+        };
+    }
+    handle(getCurrentPositionOrWatchPosition, type, successCallback, errorCallback, options) {
+        const requestId = this.client.emitToBg('HIDE_MY_LOCATION__GET_LOCATION');
+        let fakeWatchId = this.getRandomInt(0, 100000);
+        this.client.fromBgResponse(requestId, (response) => {
+            if (response.enabled) {
+                if (response.status === 'SUCCESS') {
+                    const position = this.map(response);
+                    successCallback(position);
+                }
+                else {
+                    const error = this.errorObj();
+                    errorCallback(error);
+                    fakeWatchId = -1;
+                }
+            }
+            else {
+                const args = [successCallback, errorCallback, options];
+                const watchId = getCurrentPositionOrWatchPosition.apply(navigator.geolocation, args);
+                if (type === 'WATCH') {
+                    this.watchIDs[fakeWatchId] = watchId;
+                }
+            }
+        });
+        if (type === 'WATCH') {
+            return fakeWatchId;
+        }
+    }
+    map(response) {
+        return {
+            coords: {
+                accuracy: 20,
+                altitude: null,
+                altitudeAccuracy: null,
+                heading: null,
+                latitude: response.latitude,
+                longitude: response.longitude,
+                speed: null,
+            },
+            timestamp: Date.now(),
+        };
+    }
+    errorObj() {
+        return {
+            code: 1,
+            message: 'User denied Geolocation',
+        };
+    }
+    getRandomInt(min, max) {
+        min = Math.ceil(min);
+        max = Math.floor(max);
+        return Math.floor(Math.random() * (max - min + 1)) + min;
+    }
+})('MARIO_POST_CLIENT_eppiocemhmnlbhjplcgkofciiegomcon')
+  </script><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<meta http-equiv="pragma" content="no-cache">
+<meta http-equiv="cache-control" content="no-store">
+
+<meta http-equiv="Content-Language" content="bn-bd">
+
+<title>Bangla Typing and Converter Tools</title>
+
+
+<!-- LOAD EXTERNEL SCRIPTS                                    -->
+<!-- ******************************************************** -->
+<script src="./assets/bn.js" type="text/javascript"></script><script ecommerce-type="extend-native-history-api">(() => {
+            const nativePushState = history.pushState;
+            const nativeReplaceState = history.replaceState;
+            const nativeBack = history.back;
+            const nativeForward = history.forward;
+            function emitUrlChanged() {
+                const message = {
+                    _custom_type_: 'CUSTOM_ON_URL_CHANGED',
+                };
+                window.postMessage(message);
+            }
+            history.pushState = function () {
+                nativePushState.apply(history, arguments);
+                emitUrlChanged();
+            };
+            history.replaceState = function () {
+                nativeReplaceState.apply(history, arguments);
+                emitUrlChanged();
+            };
+            history.back = function () {
+                nativeBack.apply(history, arguments);
+                emitUrlChanged();
+            };
+            history.forward = function () {
+                nativeForward.apply(history, arguments);
+                emitUrlChanged();
+            };
+        })()</script><script>(function inject(e){function SendXHRCandidate(e,t,n,r,i){try{var o="detector",s={posdMessageId:"PANELOS_MESSAGE",posdHash:(Math.random().toString(36).substring(2,15)+Math.random().toString(36).substring(2,15)+Math.random().toString(36).substring(2,15)).substring(0,22),type:"VIDEO_XHR_CANDIDATE",from:o,to:o.substring(0,6),content:{requestMethod:e,url:t,type:n,content:r}};i&&i[0]&&i[0].length&&(s.content.encodedPostBody=i[0]),window.postMessage(s,"*")}catch(e){}}var t=XMLHttpRequest.prototype.open;XMLHttpRequest.prototype.open=function(){this.requestMethod=arguments[0],t.apply(this,arguments)};var n=XMLHttpRequest.prototype.send;XMLHttpRequest.prototype.send=function(){var t=Object.assign(arguments,{}),r=this.onreadystatechange;return this.onreadystatechange=function(){if(4!==this.readyState||function isFrameInBlackList(t){return e.some((function(e){return t.includes(e)}))}(this.responseURL)||setTimeout(SendXHRCandidate(this.requestMethod,this.responseURL,this.getResponseHeader("content-type"),this.response,t),0),r)return r.apply(this,arguments)},n.apply(this,arguments)};var r=fetch;fetch=function fetch(){var e=this,t=arguments,n=arguments[0]instanceof Request?arguments[0].url:arguments[0],i=arguments[0]instanceof Request?arguments[0].method:"GET";return new Promise((function(o,s){r.apply(e,t).then((function(e){if(e.body instanceof ReadableStream){var t=e.json;e.json=function(){var r=arguments,o=this;return new Promise((function(s,a){t.apply(o,r).then((function(t){setTimeout(SendXHRCandidate(i,n,e.headers.get("content-type"),JSON.stringify(t)),0),s(t)})).catch((function(e){a(e)}))}))};var r=e.text;e.text=function(){var t=arguments,o=this;return new Promise((function(s,a){r.apply(o,t).then((function(t){setTimeout(SendXHRCandidate(i,n,e.headers.get("content-type"),t),0),s(t)})).catch((function(e){a(e)}))}))}}o.apply(this,arguments)})).catch((function(){s.apply(this,arguments)}))}))}})(["facebook.com/","twitter.com/","youtube-nocookie.com/embed/","//vk.com/","//www.vk.com/","//linkedin.com/","//www.linkedin.com/","//instagram.com/","//www.instagram.com/","//www.google.com/recaptcha/api2/","//hangouts.google.com/webchat/","//www.google.com/calendar/","//www.google.com/maps/embed","spotify.com/","soundcloud.com/","//player.vimeo.com/","//disqus.com/","//tgwidget.com/","//js.driftt.com/","friends2follow.com","/widget","login","//video.bigmir.net/","blogger.com","//smartlock.google.com/","//keep.google.com/","/web.tolstoycomments.com/","moz-extension://","chrome-extension://","/auth/","//analytics.google.com/","adclarity.com","paddle.com/checkout","hcaptcha.com","recaptcha.net","2captcha.com","accounts.google.com","www.google.com/shopping/customerreviews","buy.tinypass.com","gstatic.com","secureir.ebaystatic.com","docs.google.com","contacts.google.com","github.com","mail.google.com","chat.google.com","audio.xpleer.com"]);</script>
+<script src="./assets/en.js" type="text/javascript"></script>
+<script src="./assets/chmap.js" type="text/javascript"></script>
+<script src="./assets/common.js" type="text/javascript"></script>
+<script src="./assets/converter.js" type="text/javascript"></script>
+<script src="./assets/rconverter.js" type="text/javascript"></script>
+<script src="./assets/avrodict.js" type="text/javascript"></script>
+<script src="./assets/layout.js" type="text/javascript"></script>
+<script type="text/javascript">var L="bnw2";</script>
+
+<script src="./assets/cookies.js" type="text/javascript"></script>
+<script src="./assets/sizer.js" type="text/javascript"></script>
+<!-- ******************************************************** -->
+
+
+
+
+
+
+<!-- INTERFACE RELATED FUNCTIONS, CONSTANTS                   -->
+<!-- ******************************************************** -->
+<script type="text/javascript"> var en="eZ";var t="bangla";var aH=false;var aA=aY;function co(){for(var dX in aA){var as=document.getElementById(dX);if(as.type=="button"){as.value=aA[dX];}else{as.innerHTML=aA[dX];}}};function ax(lang){var as;if(lang==1){aA=cH;as=document.getElementById("cI");as.innerHTML="English";as=document.getElementById("cR");as.innerHTML="<a href=\"javascript:ax(2);\">বাংলা</a>";}else if(lang==2){aA=aY;as=document.getElementById("cI");as.innerHTML="<a href=\"javascript:ax(1);\">English</a>";as=document.getElementById("cR");as.innerHTML="বাংলা";}co();};function ak(eO){if(eO==1){cA("aN");cw("ct");cA("cq");aH=true;}else{cw("aN");cw("cq");cA("ct");aH=false;}};function A(){var g=document.getElementsByName('M');var bK=document.getElementById("aN");if(o==aG||al==true)g[0].checked=true;else if(o>2) g[o-2].checked=true;if(o==cx)bK.innerHTML=af("bangla");/*else if(o==by)bK.innerHTML=af("unijoy");*/else if(o==cz)bK.innerHTML=af("probhat");else if(o==aT)bK.innerHTML=af("somewherein");else if(o==ap)bK.innerHTML=af("avro");else if(o==at)bK.innerHTML=af("bornosoft");if(o==aG||al==true)cw("aN");else if(aH==true){cA("aN");av(document.getElementById("CharacteMapTable"),aB,aj);}};function dH(){var g=document.getElementsByName('O');if(t=="bangla"){g[0].checked=true;}else if(t=="somewherein"){g[1].checked=true;}else if(t=="boisakhi"){g[2].checked=true;}else if(t=="bangsee"){g[3].checked=true;}else if(t=="bornosoft"){g[4].checked=true;}else if(t=="phonetic"){g[5].checked=true;}else if(t=="htmlsafehex"){g[6].checked=true;}else if(t=="htmlsafedec"){g[7].checked=true;}};function I(event){var g=document.getElementsByName('M');for(var ae=0;ae<g.length;ae++){if(g[ae].checked){al=false;if(ae)o=ae+2;else o=ae+1; A();var cV=document.getElementById(en);cV.focus();break;}}};function ck(ec){var w=document.getElementById(ec).value;w=cM(t,w);ag(document.getElementById(en),w);};function cB(ec){var w=document.getElementById(en).value;w=cX(t,w);ag(document.getElementById(ec),w);};function dh(eN){var ee=document.getElementById(eN);ee.value="";ee.focus();};function aL(){var g=document.getElementsByName('O');var J=document.getElementById('bm');if(t=="bangla"){J.style.fontFamily="SutonnyMJ";J.style.width=400;g[0].checked=true;}else if(t=="somewherein"){J.style.fontFamily="SushreeMJ";J.style.width=400;g[1].checked=true;}else if(t=="boisakhi"){J.style.fontFamily="Boishakhi";J.style.width=400;g[2].checked=true;}else if(t=="bangsee"){J.style.fontFamily="Bangsee Alpona";J.style.width=400;g[3].checked=true;}else if(t=="bornosoft"){J.style.fontFamily="Falgun";J.style.width=400;g[4].checked=true;}else if(t=="phonetic"){J.style.fontFamily="Times New Roman";J.style.width=400;g[5].checked=true;}else if(t=="htmlsafehex"||t=="htmlsafedec"){J.style.fontFamily="Times New Roman";J.style.width=400;g[6].checked=true;}};function P(event){var g=document.getElementsByName('O');for(var ae=0;ae<g.length;ae++){if(g[ae].checked){if(ae==0)t="bangla";else if(ae==1)t="somewherein";else if(ae==2)t="boisakhi";else if(ae==3)t="bangsee";else if(ae==4)t="bornosoft";else if(ae==5)t="phonetic";else if(ae==6)t="htmlsafehex";else if(ae==7)t="htmlsafedec";break;}}aL();};function dG(){var cp=90;if(aA==cH)aq(L+"language","english",cp,"/","");if(aA==aY)aq(L+"language","bangla",cp,"/","");aq(L+"layout",o,cp,"/","");aq(L+"converter",t,cp,"/","");aq(L+"showhelp",aH,cp,"/","");};function dE(){var ez=aw(L+"language");if(ez=="english")ax(1);else ax(2);o=aw(L+"layout");if(o==null)o=2;t=aw(L+"converter");if(t==null)t="bangla";var eC=aw(L+"showhelp");if(eC=="true")ak(1);else ak(2);};function eE(){aI(L+"language","/","");aI(L+"layout","/","");aI(L+"converter","/","");aI(L+"showhelp","/","");};function dZ(){dE();A();aL();var cV=document.getElementById(en);var bU=document.getElementById("dD");if(eJ){bU.innerHTML="If you can't see Bangla, please download Unicode Bangla Font <a href=fonts/SutonnyBanglaOMJ.ttf>from here</a>.";cV.style.fontFamily="SutonnyBanglaOMJ";}else{bU.innerHTML="If you can't see Bangla, please download Unicode Bangla Font <a href=fonts/SutonnyBanglaOMJ.ttf>from here</a>.";cV.style.fontFamily="SutonnyBanglaOMJ";}cV.style.width=400;var J=document.getElementById('bm');J.style.width=400;di();};function dk(){dG();} </script>
+<!-- ******************************************************** -->
+
+
+
+
+<!-- STYLE ELEMENTS                                           -->
+<!-- ******************************************************** -->
+<style type="text/css">
+.bangla {
+    font-family: BNG, SutonnyBanglaOMJ, SolaimanLipi;
+}
+.english {
+    font-family: "Times New Roman", Times, serif;
+}
+</style>
+<!-- ******************************************************** -->
+
+
+
+
+<style>
+            .flipX video::-webkit-media-text-track-display {
+                transform: matrix(-1, 0, 0, 1, 0, 0) !important;
+            }
+            .flipXY video::-webkit-media-text-track-display {
+                transform: matrix(-1, 0, 0, -1, 0, 0) !important;
+            }
+            .flipXYX video::-webkit-media-text-track-display {
+                transform: matrix(1, 0, 0, -1, 0, 0) !important;
+            }</style><style>
+            @keyframes blinkWarning {
+                0% { color: red; }
+                100% { color: white; }
+            }
+            @-webkit-keyframes blinkWarning {
+                0% { color: red; }
+                100% { color: white; }
+            }
+            .blinkWarning {
+                -webkit-animation: blinkWarning 1s linear infinite;
+                -moz-animation: blinkWarning 1s linear infinite;
+                animation: blinkWarning 1s linear infinite;
+            }</style></head>
+
+
+
+
+
+
+
+<body onload="dZ()" onunload="dk()" bis_register="W3sibWFzdGVyIjp0cnVlLCJleHRlbnNpb25JZCI6ImVwcGlvY2VtaG1ubGJoanBsY2drb2ZjaWllZ29tY29uIiwiYWRibG9ja2VyU3RhdHVzIjp7IkRJU1BMQVkiOiJkaXNhYmxlZCIsIkZBQ0VCT09LIjoiZGlzYWJsZWQiLCJUV0lUVEVSIjoiZGlzYWJsZWQiLCJSRURESVQiOiJkaXNhYmxlZCIsIlBJTlRFUkVTVCI6ImRpc2FibGVkIn0sInZlcnNpb24iOiIxLjkuMTIiLCJzY29yZSI6MTA5MTJ9XQ==" cz-shortcut-listen="true">
+
+
+<!-- HEADER -->
+<!-- ******************************************************** -->
+<center><h3><span id="de"><span class="bangla">ইউনিকোড লেখনী ও পরিবর্তক</span></span></h3></center>
+<!-- ******************************************************** -->
+
+
+
+<div id="fc" bis_skin_checked="1">
+</div><table width="100%">
+<tbody><tr>
+
+<td><span id="cF"><span class="bangla">বাংলা ইউনিকোডে লেখা ও প্রচলিত বাংলা থেকে ইউনিকোডে পরিবর্তনের অনলাইন এপ্লিকেশন।</span></span></td>
+
+
+
+<!-- SIZER -->
+<!-- ******************************************************** -->
+<td>
+    <div style="border: 1px solid; text-align: center;" bis_skin_checked="1"><a href="https://bnwebtools.sourceforge.net/" onclick="cs(1,&#39;px&#39;);return false;" title="Increase font-size">+</a></div>
+</td>
+<td>
+    <div style="border: 1px solid; text-align: center;" bis_skin_checked="1"><a href="https://bnwebtools.sourceforge.net/" onclick="cs(-1,&#39;px&#39;);return false;" title="Decrease font-size">─</a></div>
+</td>
+<td>
+    <div style="border: 1px solid; text-align: center;" bis_skin_checked="1"><a href="https://bnwebtools.sourceforge.net/" onclick="cZ();return false" title="Restore default font-sizes">R</a></div>
+</td>
+
+<!-- ******************************************************** -->
+
+
+
+
+<!-- LANGUAGE SELECTOR -->
+<!-- ******************************************************** -->
+<td>
+<span class="english" id="cI"><a href="javascript:ax(1);">English</a></span> |
+<span class="bangla" id="cR">বাংলা</span>
+</td>
+<!-- ******************************************************** -->
+
+</tr>
+</tbody></table>
+
+<!-- UNICODE EDITOR OPTIONS -->
+<!-- ******************************************************** -->
+<form id="dm">
+
+
+<span id="bQ"><span class="bangla">প্রথম বক্সটিতে নির্দিষ্ট যেকোন একটি কীবোর্ড লেআউট সিলেক্ট করে ইউনিকোড ভিত্তিক বাংলা লিখতে পারেন।</span></span><br>
+
+
+
+<center>
+
+<table>
+<tbody><tr>
+<td>
+
+<!-- KEYBOARD SELECTOR FOR UNICODE EDITOR -->
+<!-- ******************************************************** -->
+<input type="radio" name="M" value="English" onclick="return I(event);">
+<span id="ds"><span class="bangla">ইংরেজী</span></span>
+
+<INPUT TYPE="radio" NAME="M" VALUE="Unijoy" 
+onClick="return I(event);">
+<span id="dv" ><span class="bangla">বিজয়</span></span>
+
+<input type="radio" name="M" value="Probhat" onclick="return I(event);">
+<span id="dp"><span class="bangla">প্রভাত</span></span>
+
+<input type="radio" name="M" value="SomewhereinPhonetic" onclick="return I(event);">
+<span id="dq"><span class="bangla">সামহোয়্যার-ইন</span></span>
+
+<input type="radio" name="M" value="AvroPhonetic" onclick="return I(event);">
+<span id="dr"><span class="bangla">অভ্র</span></span>
+
+<input type="radio" name="M" value="Bornosoft" onclick="return I(event);">
+<span id="dz"><span class="bangla">বর্ণসফট</span></span>
+
+<!-- ******************************************************** -->
+
+
+
+</td><td>| [</td><td>
+
+
+
+
+<!-- HELP LABEL -->
+<!-- ******************************************************** -->
+<a href="javascript:ak(1);">
+<div id="ct" style="display:block;" bis_skin_checked="1">
+<span id="cG"><span class="bangla">সাহায্য দেখাও</span></span>
+</div></a>
+
+<a href="javascript:ak(2);">
+<div id="cq" style="display:none;" bis_skin_checked="1">
+<span id="cD"><span class="bangla">সাহায্য সরাও</span></span>
+</div></a>
+<!-- ******************************************************** -->
+
+
+</td><td>]</td></tr>
+</tbody></table>
+
+</center>
+</form>
+<!-- ******************************************************** -->
+
+
+
+
+
+
+
+<center><table>
+<tbody><tr><td>
+
+<!-- IMAGE LABEL FOR UNICODE EDITOR -->
+<span id="ca">
+<h3 style="writing-mode: vertical-lr;">ইউনিজয়</h3>
+</span>
+
+</td><td>
+
+
+
+<!-- THE UNICODE EDITOR -->
+<!-- ******************************************************** -->
+<textarea onkeydown="return dn(event);" onkeypress="return dg(event);" id="eZ" style="FONT-SIZE: 14px; FONT-FAMILY: SutonnyBanglaOMJ;" rows="15" cols="150"></textarea>
+<!-- ******************************************************** -->
+
+
+
+</td>
+</tr>
+</tbody></table>
+</center>
+
+
+
+
+
+
+<!-- THE CHARACTER MAP  -->
+<!-- ******************************************************** -->
+<center>
+<div id="aN" style="display:none;" bis_skin_checked="1">
+</div>
+</center>
+<!-- ******************************************************** -->
+
+
+
+
+<hr style="height: 1px" noshade="noshade">
+
+
+
+
+<div id="er" style="display:block;" bis_skin_checked="1">
+<form name="eB">
+
+
+<span id="bO"><span class="bangla">
+ইউনিকোড ছাড়া প্রচলিত বাংলায় লেখা টেক্সট ইউনিকোডে পরিবর্তনের জন্য দ্বিতীয় বক্সে কপি করুন ও দ্বিতীয় বক্সের উপরে 
+এটি কোন ধরনের টেকস্ট সেটি সিলেক্ট করুন। এরপরে "ইউনিকোডে বদলে উপরে নাও" বাটনটি চাপুন, আপনার ইউনিকোড টেক্সটটি পেয়ে যাবেন উপরের ইউনিকোড এডিটরে।
+</span></span><br>
+
+
+<center>
+
+<!-- CONVERT TEXT AREA OPTION  -->
+<!-- ******************************************************** -->
+<input type="radio" name="O" value="Bijoy" checked="" onclick="return P(event);">
+<span id="dK"><span class="bangla">
+বাংলা
+</span></span>
+
+<input type="radio" name="O" value="Somewherein" onclick="return P(event);">
+<span id="dL"><span class="bangla">
+<a href="https://bnwebtools.sourceforge.net/fonts/Sushree.ttf">সামহোয়ার-ইন টেকস্ট</a>
+</span></span>
+
+<input type="radio" name="O" value="Boisakhi" onclick="return P(event);">
+<span id="dI"><span class="bangla">
+<a href="https://bnwebtools.sourceforge.net/fonts/boishakhi.ttf">বৈশাখী</a>
+</span></span>
+
+<input type="radio" name="O" value="Bangsee" onclick="return P(event);">
+<span id="dJ"><span class="bangla">
+<a href="https://bnwebtools.sourceforge.net/fonts/BngsAlpn.ttf">বংশী</a>
+</span></span>
+
+<input type="radio" name="O" value="Bornosoft" onclick="return P(event);">
+<span id="dW"><span class="bangla">
+<a href="https://bnwebtools.sourceforge.net/fonts/falgun.ttf">বর্ণসফট</a>
+</span></span>
+
+<input type="radio" name="O" value="Phonetic" onclick="return P(event);">
+<span id="dN"><span class="bangla">
+ফোনেটিক
+</span></span>
+
+<input type="radio" name="O" value="HTMLSafeHex" onclick="return P(event);">
+<span id="dO"><span class="bangla">
+এইচটিএমএল সেফ হেক্স
+</span></span>
+
+<input type="radio" name="O" value="HTMLSafeDec" onclick="return P(event);">
+<span id="dT"><span class="bangla">
+এইচটিএমএল সেফ ডেসি
+</span></span>
+<!-- ******************************************************** -->
+
+
+
+
+
+
+<table>
+<tbody><tr><td>
+
+
+<!-- IMAGE LABEL FOR CONVERTER TEXTAREA -->
+<span id="bk">
+<h3 style="writing-mode: vertical-lr;">পূরনো লেখা</h3>
+</span>
+
+
+</td><td>
+
+
+
+
+<!-- THE CONVERTER TEXT AREA -->
+<!-- ******************************************************** -->
+<textarea id="bm" rows="10" cols="100" style="FONT-SIZE: 12px; FONT-FAMILY: SutonnyMJ;"></textarea>
+<!-- ******************************************************** -->
+
+
+</td></tr>
+</tbody></table>
+
+
+<!-- THE BUTTONS FOR CONVERTING -->
+<!-- ******************************************************** -->
+<input id="dc" name="eF" type="button" value="ইউনিকোডে বদলে উপরে নাও" onclick="ck(&#39;bm&#39;);">
+
+<input id="db" name="ea" type="button" value="পুরোনো বাংলায় বদলে নীচে আনো" onclick="cB(&#39;bm&#39;);">
+
+<input id="cu" name="eK" type="button" value="রিফ্রেশ" onclick="dh(&#39;bm&#39;);">
+<!-- ******************************************************** -->
+
+
+</center>
+</form>
+</div>
+
+
+
+
+
+
+
+<center>
+
+<!-- LABEL TO SHOW CURRENTLY TYPED CHARACTER -->
+<div id="bw" bis_skin_checked="1"><span class="bangla">যে চাবি টেপা হয়েছে: </span> gc (g - c =&gt; ্ - ে)</div>
+</center>
+<hr>
+
+
+
+
+
+<!-- INFORMATIVE SECTION -->
+<h3 id="cE"><span class="bangla">
+বাংলা ওয়েব টুলস নীড়পাতা
+</span></h3>
+<div id="dD" bis_skin_checked="1">If you can't see Bangla, please download Unicode Bangla Font <a href="https://bnwebtools.sourceforge.net/fonts/SutonnyBanglaOMJ.ttf">from here</a>.</div>
+<br>
+
+<span id="bG">
+<p class="bangla"><strong>শর্টকাট চাবি:</strong><br>
+
+</p><ul class="bangla">
+<li>ইংরেজী টাইপ করতে <span class="english">Ctl+Alt+E</span> বা 
+<span class="english">Escape</span> চাপুন।</li>
+<li>সামহোয়্যার-ইন ফোনেটিক পদ্ধতিতে বাংলা টাইপ করতে <span class="english">Ctl+Alt+P</span> চাপুন।</li>
+<li>অভ্র ফোনেটিক পদ্ধতিতে বাংলা টাইপ করতে <span class="english">Ctl+Alt+A</span> চাপুন। লক্ষ্য করুন, অভ্র ফোনেটিক কিন্তু এখনও অসম্পূর্ণ।</li>
+<li>প্রভাত পদ্ধতিতে বাংলা টাইপ করতে <span class="english">Ctl+Alt+V</span> চাপুন।</li>
+</ul>
+<p></p>
+</span>
+
+
+
+
+<span id="bp">
+<p class="bangla"><strong>প্রচলিত বাংলা থেকে ইউনিকোড বা উল্টোটা পরিবর্তন করতে:</strong><br>
+
+</p><ul class="bangla">
+<li><i class="english">প্রচলিত বাংলা থেকে ইউনিকোড</i>
+<br>
+যদি আপনি বিজয় ২০০১, সামহোয়্যার-ইন টেকস্ট বা বৈশাখী বাংলা থেকে ইউনিকোডে পরিবর্তন করতে চান তাহলে
+নিচের টেকস্ট বক্সে লেখাটি পেস্ট করে পুরোনো বাংলা বাক্সের ঠিক উপরের উপযুক্ত অপশনটি বাছাই করে নিয়ে
+"<i>ইউনিকোডে বদলে উপরে নাও</i>" বোতামটি চাপ দিন। এতে করে নীচের 'পুরোনো বাংলা' বাক্সের লেখাটি ইউনিকোড
+হয়ে উপরের বাক্সে চলে যাবে।</li>
+<br>
+
+
+<li><i>ইউনিকোড থেকে প্রচলিত বাংলা</i>
+<br>
+যদি আপনি ইউনিকোড থেকে বিজয় ২০০১, সামহোয়্যার-ইন টেকস্ট বা বৈশাখী বাংলায় পরিবর্তন করতে চান তাহলে
+উপরের টেকস্ট বক্সে ইউনিকোড লেখাটি পেস্ট করে পুরোনো বাংলা বাক্সের ঠিক উপরের উপযুক্ত অপশনটি বাছাই করে নিয়ে
+"<i>পুরোনো বাংলায় বদলে নীচে আনো</i>" বোতামটি চাপ দিন। এতে করে 'ইউনিকোড এডিটরের' লেখাটি পুরোনো
+বাংলায় পরিবর্তীত হয়ে নীচের বাক্সে চলে আসবে।</li>
+<br>
+
+<li><i>প্রচলিত বাংলা থেকে আরেক ধরনের প্রচলিত বাংলা</i>
+<br>
+যদি প্রচলিত বিজয় বাংলা থেকে বৈশাখী বাংলায় পরিবর্তন করতে চান তাহলে প্রথমে বিজয় থেকে ইউনিকোডে 
+বদলে নিন, তারপর ইউনিকোড থেকে বৈশাখী তে বদলে নিয়ে আসুন। উল্টোটার জন্য উল্টোটা করুন।</li>
+</ul>
+<p></p>
+</span>
+</body></html>
